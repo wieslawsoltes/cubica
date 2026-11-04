@@ -35,7 +35,7 @@
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
-html { min-width: 320px; scroll-behavior: smooth; }
+html { min-width: 320px; }
 body { margin: 0; background: var(--bg); color: var(--ink); }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }

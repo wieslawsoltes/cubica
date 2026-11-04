@@ -151,7 +151,7 @@ function crossData(cube) {
     const isSolved = homeAligned(piece);
     if (isSolved) solved++;
     nodes.push({ id: targetId, pieceId: piece.id, label: `D${other}`, colors: [COLORS.D, COLORS[other]], x: tx, y: ty, radius: 26, kind: 'target', slot: `D${other}`, solved: isSolved, secondary: 'HOME', caption: other === 'F' || other === 'B' ? { x: tx + 37, y: ty + 6, anchor: 'start' } : null, description: `Home target for ${p.label}; ${isSolved ? 'matched and aligned' : `matching edge is currently at ${p.slot}`}` });
-    nodes.push({ ...p, x: px, y: py, secondary: isSolved ? 'ALIGNED' : `at ${p.slot}`, radius: 30, caption: other === 'B' ? { x: px + 41, y: py + 6, anchor: 'start' } : null });
+    nodes.push({ ...p, x: px, y: py, secondary: isSolved ? 'ALIGNED' : `at ${p.slot}`, radius: 30, caption: other === 'F' || other === 'B' ? { x: px + 41, y: py + 6, anchor: 'start' } : null });
     links.push({ source: center.id, target: targetId, accent: true });
     links.push({ source: piece.id, target: targetId, directed: true, accent: isSolved, dashed: !isSolved });
   }
@@ -450,7 +450,7 @@ export function renderGraph(container, { cube, mode = 'pieces', selectedPiece = 
     const fontSize = mode === 'cross' ? (node.progress ? 25 : 20) : node.progress ? 17 : r < 12 ? 8 : node.kind === 'state' ? 11 : displayLabel.length > 3 ? 10 : 12;
     const captionSize = mode === 'cross' ? 16.5 : 9.5;
     const captionX = node.caption?.x ?? node.x;
-    const captionY = node.caption?.y ?? node.y + r + (node.progress ? 22 : 16);
+    const captionY = node.caption?.y ?? node.y + r + (mode === 'cross' ? 26 : node.progress ? 22 : 16);
     const captionAnchor = node.caption?.anchor || 'middle';
     const label = count <= 100 || r >= 12 || active ? `<text class="graph-node-label" x="${node.x}" y="${node.y + fontSize * .35}" text-anchor="middle" fill="${INK}" font-size="${fontSize}" font-weight="650" pointer-events="none">${escape(displayLabel)}</text>` : '';
     const badge = node.orientation && cube.size === 3 ? `<g class="graph-orientation-badge" pointer-events="none"><circle cx="${node.x + r}" cy="${node.y - r}" r="7.5" fill="${AMBER}"/><text x="${node.x + r}" y="${node.y - r + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#111923">${node.orientation}</text></g>` : '';
