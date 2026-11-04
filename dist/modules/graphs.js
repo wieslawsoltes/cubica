@@ -137,7 +137,7 @@ function crossData(cube) {
   }
   const cross = cube.cubies.filter(p => p.stickers.length === 2 && p.stickers.some(s => s.color === 'D'));
   const center = cube.cubies.find(p => p.stickers.length === 1 && p.stickers[0].color === 'D');
-  const nodes = [{ ...pieceNode(center, cube.size), x: 320, y: 220, radius: 29, secondary: 'D CROSS' }];
+  const nodes = [{ ...pieceNode(center, cube.size), x: 320, y: 220, radius: 33 }];
   const links = [];
   const destinations = { F: [320, 315], R: [415, 220], B: [320, 125], L: [225, 220] };
   const origins = { F: [320, 398], R: [498, 220], B: [320, 42], L: [142, 220] };
@@ -150,8 +150,8 @@ function crossData(cube) {
     const targetId = `target-${piece.id}`;
     const isSolved = homeAligned(piece);
     if (isSolved) solved++;
-    nodes.push({ id: targetId, pieceId: piece.id, label: `D${other}`, colors: [COLORS.D, COLORS[other]], x: tx, y: ty, radius: 20, kind: 'target', slot: `D${other}`, solved: isSolved, secondary: 'HOME', description: `Home target for ${p.label}; ${isSolved ? 'matched and aligned' : `matching edge is currently at ${p.slot}`}` });
-    nodes.push({ ...p, x: px, y: py, secondary: isSolved ? 'ALIGNED' : `at ${p.slot}`, radius: 23 });
+    nodes.push({ id: targetId, pieceId: piece.id, label: `D${other}`, colors: [COLORS.D, COLORS[other]], x: tx, y: ty, radius: 26, kind: 'target', slot: `D${other}`, solved: isSolved, secondary: 'HOME', caption: other === 'F' || other === 'B' ? { x: tx + 37, y: ty + 6, anchor: 'start' } : null, description: `Home target for ${p.label}; ${isSolved ? 'matched and aligned' : `matching edge is currently at ${p.slot}`}` });
+    nodes.push({ ...p, x: px, y: py, secondary: isSolved ? 'ALIGNED' : `at ${p.slot}`, radius: 30, caption: other === 'B' ? { x: px + 41, y: py + 6, anchor: 'start' } : null });
     links.push({ source: center.id, target: targetId, accent: true });
     links.push({ source: piece.id, target: targetId, directed: true, accent: isSolved, dashed: !isSolved });
   }
@@ -447,7 +447,11 @@ export function renderGraph(container, { cube, mode = 'pieces', selectedPiece = 
     const isRoot = node.id === 's0';
     const fill = active || isRoot ? SELECTED : node.kind === 'target' ? TARGET : NODE;
     const displayLabel = node.displayLabel || node.label;
-    const fontSize = node.progress ? 17 : r < 12 ? 8 : node.kind === 'state' ? 11 : displayLabel.length > 3 ? 10 : 12;
+    const fontSize = mode === 'cross' ? (node.progress ? 25 : 20) : node.progress ? 17 : r < 12 ? 8 : node.kind === 'state' ? 11 : displayLabel.length > 3 ? 10 : 12;
+    const captionSize = mode === 'cross' ? 16.5 : 9.5;
+    const captionX = node.caption?.x ?? node.x;
+    const captionY = node.caption?.y ?? node.y + r + (node.progress ? 22 : 16);
+    const captionAnchor = node.caption?.anchor || 'middle';
     const label = count <= 100 || r >= 12 || active ? `<text class="graph-node-label" x="${node.x}" y="${node.y + fontSize * .35}" text-anchor="middle" fill="${INK}" font-size="${fontSize}" font-weight="650" pointer-events="none">${escape(displayLabel)}</text>` : '';
     const badge = node.orientation && cube.size === 3 ? `<g class="graph-orientation-badge" pointer-events="none"><circle cx="${node.x + r}" cy="${node.y - r}" r="7.5" fill="${AMBER}"/><text x="${node.x + r}" y="${node.y - r + 3}" text-anchor="middle" font-size="9" font-weight="700" fill="#111923">${node.orientation}</text></g>` : '';
     const status = (node.piece || node.kind === 'target') && r >= 8 ? `<circle class="graph-home-status" cx="${node.x + r * .76}" cy="${node.y + r * .76}" r="${Math.max(3, Math.min(4.5, r * .25))}" fill="${node.solved ? SOLVED : MUTED}" stroke="${NODE}" stroke-width="1.6" pointer-events="none"/>` : '';
@@ -455,7 +459,7 @@ export function renderGraph(container, { cube, mode = 'pieces', selectedPiece = 
     const progress = node.progress ? `<g class="graph-cross-progress" pointer-events="none"><circle cx="${node.x}" cy="${node.y}" r="${progressRadius}" fill="none" stroke="${LINE}" stroke-width="3"/><circle cx="${node.x}" cy="${node.y}" r="${progressRadius}" fill="none" stroke="${SOLVED}" stroke-width="3" stroke-linecap="round" stroke-dasharray="${perimeter * node.progress.value / node.progress.total} ${perimeter}" opacity="${node.progress.value > 0 ? 1 : 0}" transform="rotate(-90 ${node.x} ${node.y})"/></g>` : '';
     const classes = ['graph-node', active && 'is-selected', neighbor && 'is-neighbor', affected && 'is-affected', muted && 'is-muted'].filter(Boolean).join(' ');
     const description = `${node.description}${affected ? '; affected by the next turn' : ''}`;
-    return `<g data-node="${i}" data-node-id="${escape(node.id)}" data-piece-id="${escape(node.pieceId || '')}" data-diagram-item="${i}" data-focus-key="${escape(node.id)}" tabindex="-1" role="button" ${node.pieceId ? `aria-pressed="${active}"` : ''} ${node.kind === 'state' && !node.action?.length ? 'aria-disabled="true"' : ''} aria-label="${escape(description)}" class="${classes}"><circle class="graph-hit-area" cx="${node.x}" cy="${node.y}" r="${count > 70 ? r + 4 : Math.max(r + 5, 23)}" fill="transparent"/>${progress}<circle class="graph-focus-ring" cx="${node.x}" cy="${node.y}" r="${r + (node.progress ? 13 : 9)}" fill="none" stroke="${ACCENT}" stroke-width="2" opacity="0" pointer-events="none"/>${active ? `<circle class="graph-selection-ring" cx="${node.x}" cy="${node.y}" r="${r + 5}" fill="none" stroke="${ACCENT}" stroke-width="2" pointer-events="none"/>` : ''}${affected ? `<circle class="graph-preview-ring" cx="${node.x}" cy="${node.y}" r="${r + (active ? 9 : 5)}" fill="none" stroke="${PREVIEW}" stroke-width="1.7" stroke-dasharray="3 3" pointer-events="none"/>` : ''}<circle class="graph-node-shell" cx="${node.x}" cy="${node.y}" r="${r}" fill="${fill}" stroke="${active ? ACCENT : LINE}" stroke-width="${active ? 2 : 1}"/>${ringSegments(node, node.kind === 'target' ? r - 3 : r)}${label}${badge}${status}${node.secondary ? `<text class="graph-node-caption" x="${node.x}" y="${node.y + r + (node.progress ? 22 : 16)}" text-anchor="middle" fill="${MUTED}" font-size="9.5" font-weight="550" letter-spacing=".45" pointer-events="none">${escape(node.secondary)}</text>` : ''}<title>${escape(description)}</title></g>`;
+    return `<g data-node="${i}" data-node-id="${escape(node.id)}" data-piece-id="${escape(node.pieceId || '')}" data-diagram-item="${i}" data-focus-key="${escape(node.id)}" tabindex="-1" role="button" ${node.pieceId ? `aria-pressed="${active}"` : ''} ${node.kind === 'state' && !node.action?.length ? 'aria-disabled="true"' : ''} aria-label="${escape(description)}" class="${classes}"><circle class="graph-hit-area" cx="${node.x}" cy="${node.y}" r="${count > 70 ? r + 4 : Math.max(r + 5, 23)}" fill="transparent"/>${progress}<circle class="graph-focus-ring" cx="${node.x}" cy="${node.y}" r="${r + (node.progress ? 13 : 9)}" fill="none" stroke="${ACCENT}" stroke-width="2" opacity="0" pointer-events="none"/>${active ? `<circle class="graph-selection-ring" cx="${node.x}" cy="${node.y}" r="${r + 5}" fill="none" stroke="${ACCENT}" stroke-width="2" pointer-events="none"/>` : ''}${affected ? `<circle class="graph-preview-ring" cx="${node.x}" cy="${node.y}" r="${r + (active ? 9 : 5)}" fill="none" stroke="${PREVIEW}" stroke-width="1.7" stroke-dasharray="3 3" pointer-events="none"/>` : ''}<circle class="graph-node-shell" cx="${node.x}" cy="${node.y}" r="${r}" fill="${fill}" stroke="${active ? ACCENT : LINE}" stroke-width="${active ? 2 : 1}"/>${ringSegments(node, node.kind === 'target' ? r - 3 : r)}${label}${badge}${status}${node.secondary ? `<text class="graph-node-caption" x="${captionX}" y="${captionY}" text-anchor="${captionAnchor}" fill="${MUTED}" font-size="${captionSize}" font-weight="550" letter-spacing=".45" pointer-events="none">${escape(node.secondary)}</text>` : ''}<title>${escape(description)}</title></g>`;
   }).join('');
   const defs = [...markers].map(([color, markerId]) => `<marker id="${markerId}" viewBox="0 0 8 8" refX="7" refY="4" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 7 4 1 7Z" fill="${color}"/></marker>`).join('');
   const keyboardHelp = 'Use arrow keys to move between nodes, Enter or Space to select, and Escape to clear a piece selection.';
