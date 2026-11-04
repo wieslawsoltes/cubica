@@ -1,0 +1,13 @@
+{
+  "name": "cubica-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A native WebGPU cube learning studio",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wieslawsoltes/cubica.git"
+  },
+  "homepage": "https://wieslawsoltes.github.io/cubica/",
+  "scripts": { "test": "node --test tests/*.test.mjs" }
+}
