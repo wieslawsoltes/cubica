@@ -125,7 +125,10 @@ function navigationTo(next, {focus=false}={}) {
   if(view==='solver') renderSolver();
   if(workspace) { if(!busy)renderer?.setCube(cube); updateCubeUI(); }
   if(previousView!==view)window.scrollTo({top:0,behavior:'auto'});
-  if(focus) $('#main-content').focus({preventScroll:true});
+  if(view==='graphs'&&window.matchMedia('(max-width: 1020px)').matches) {
+    $('.analysis-panel').scrollIntoView({block:'start',behavior:'auto'});
+    if(focus) $('.analysis-tabs [aria-selected="true"]').focus({preventScroll:true});
+  } else if(focus) $('#main-content').focus({preventScroll:true});
 }
 function heading(eyebrow,title,subtitle,extra='') { return `<div class="page-heading"><div><div class="eyebrow"><span class="tiny-dot"></span>${eyebrow}</div><h1>${title}</h1><p>${subtitle}</p></div>${extra}</div>`; }
 function updateJourney() {
@@ -464,7 +467,7 @@ document.addEventListener('click',async event=>{
   const target=event.target.closest('[data-action]');if(!target||target.disabled)return;
   const action=target.dataset.action;
   try{
-    if(action==='navigate')navigationTo(target.dataset.view);
+    if(action==='navigate')navigationTo(target.dataset.view,{focus:true});
     else if(action==='mobile-nav')setMobileNavigation(!$('.sidebar').classList.contains('open'));
     else if(action==='close-nav')setMobileNavigation(false);
     else if(action==='reset')resetCube();else if(action==='scramble')scrambleCube();
@@ -476,7 +479,7 @@ document.addEventListener('click',async event=>{
     else if(action==='camera')renderer.resetView();
     else if(action==='locate-piece'){if(selectedPiece)renderer.focusPiece(selectedPiece);}
     else if(action==='clear-selection')selectPiece(null);
-    else if(action==='expand-analysis')navigationTo(view==='graphs'?'playground':'graphs');
+    else if(action==='expand-analysis')navigationTo(view==='graphs'?'playground':'graphs',{focus:true});
     else if(action==='toggle-impact'){showImpact=!showImpact;updateMoveCoach();renderWorkspaceAnalysis();save();}
     else if(action==='solve-goal'){solveGoal=target.dataset.goal;if(solveGoal==='cross')graphMode='cross';updateCubeUI();save();}
     else if(action==='plan-solution')await requestSolution(solveGoal==='cross');
