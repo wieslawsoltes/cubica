@@ -8,7 +8,7 @@ A browser workbench for solving, inspecting, and understanding the cube. The 3D 
 
 The application is static, runs its model and solvers locally, and has no runtime CDN or framework dependency.
 
-![Cubica solve workspace with linked cube analysis](docs/cubica-studio.png)
+![Cubica solve workspace with linked cube analysis](docs/cubica-studio.jpg)
 
 ## What is included
 
