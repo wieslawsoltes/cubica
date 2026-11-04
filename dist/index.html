@@ -6,8 +6,20 @@
   <meta name="theme-color" content="#10151b">
   <meta name="description" content="A precise cube solving workbench. Native WebGPU, linked piece graphs, optimal cross planning, move-by-move explanations and speed practice.">
   <title>Cubica — Solve. Inspect. Understand.</title>
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=20261104-workspace">
+  <link rel="stylesheet" href="./style.css?v=20261104-workspace">
+  <!-- Bump the release token across these asset URLs when publishing UI changes. -->
+  <script type="importmap">
+    {"imports":{
+      "./modules/cube.js":"./modules/cube.js?v=20261104-workspace",
+      "./modules/renderer.js":"./modules/renderer.js?v=20261104-workspace",
+      "./modules/insights.js":"./modules/insights.js?v=20261104-workspace",
+      "./modules/solver.js":"./modules/solver.js?v=20261104-workspace",
+      "./modules/curriculum.js":"./modules/curriculum.js?v=20261104-workspace",
+      "./modules/graphs.js":"./modules/graphs.js?v=20261104-workspace",
+      "./modules/practice.js":"./modules/practice.js?v=20261104-workspace"
+    }}
+  </script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -91,6 +103,6 @@
   <dialog id="app-dialog"><div id="dialog-content"></div></dialog>
   <div id="toast" role="status" aria-live="polite"></div>
   <input type="file" id="import-file" accept=".json,application/json" hidden>
-  <script type="module" src="./app.js"></script>
+  <script type="module" src="./app.js?v=20261104-workspace"></script>
 </body>
 </html>

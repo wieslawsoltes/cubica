@@ -183,6 +183,9 @@ test('entry point, module imports, workers and CSS resources stay inside /cubica
     assert.ok(url.href.startsWith(app.scope), `${parent} depends on out-of-scope resource ${reference}`);
     const relative = url.pathname.slice(new URL(app.scope).pathname.length);
     assert.equal((await stat(new URL(relative, DIST))).isFile(), true, reference);
+    // The service worker uses canonical paths for both versioned and plain URLs.
+    url.search = '';
+    url.hash = '';
     if (relative !== 'sw.js') assert.ok(precache.has(url.href), `${relative} is missing from offline precache`);
     pending.push(relative);
   }
@@ -194,6 +197,14 @@ test('entry point, module imports, workers and CSS resources stay inside /cubica
     if (file.endsWith('.html')) {
       assert.doesNotMatch(source, /<iframe\b/i);
       for (const match of source.matchAll(/<(?:script|link|img)\b[^>]*\b(?:src|href)=["']([^"']+)["']/gi)) await resource(match[1], file);
+      for (const match of source.matchAll(/<script\s+type="importmap">([\s\S]*?)<\/script>/g)) {
+        const map = JSON.parse(match[1]);
+        for (const [specifier, reference] of Object.entries(map.imports)) {
+          assert.equal(new URL(specifier, app.scope).pathname, new URL(reference, app.scope).pathname);
+          assert.ok(new URL(reference, app.scope).searchParams.get('v'), 'Mapped UI modules carry a release version');
+          await resource(reference, file);
+        }
+      }
     } else if (file.endsWith('.js')) {
       for (const match of source.matchAll(/\b(?:import|export)\s+(?:[^;]*?\s+from\s*)?["']([^"']+)["']/g)) await resource(match[1], file);
       for (const match of source.matchAll(/new URL\(\s*["']([^"']+)["']\s*,\s*import\.meta\.url\s*\)/g)) await resource(match[1], file);
