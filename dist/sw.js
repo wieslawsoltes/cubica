@@ -2,11 +2,11 @@
 // reads and version cleanup inside this registration's own scope.
 const SCOPE = new URL(self.registration.scope);
 const CACHE_PREFIX = `cubica-offline:${encodeURIComponent(SCOPE.pathname)}:`;
-const CACHE = `${CACHE_PREFIX}v2`;
+const CACHE = `${CACHE_PREFIX}v3`;
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './favicon.svg',
   './modules/cube.js', './modules/renderer.js', './modules/graphs.js',
-  './modules/curriculum.js', './modules/practice.js', './modules/solver.js',
+  './modules/curriculum.js', './modules/practice.js', './modules/insights.js', './modules/solver.js',
   './modules/solver-worker.js', './vendor/cubejs/cube.js', './vendor/cubejs/solve.js',
 ];
 const ASSET_URLS = ASSETS.map(path => new URL(path, SCOPE).href);

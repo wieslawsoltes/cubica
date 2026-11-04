@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CubeState, FACE_NORMALS } from '../dist/modules/cube.js';
-import { createGraphData, cubieOrientation } from '../dist/modules/graphs.js';
+import { createGraphData, cubieOrientation, graphFocus } from '../dist/modules/graphs.js';
 import { algorithms, lessons, algorithmPreviewSVG } from '../dist/modules/curriculum.js';
 
 test('the complete 3×3 physical graph contains every visible cubie and adjacency', () => {
@@ -36,6 +36,99 @@ test('cross graph reports real D-edge progress', () => {
   cube.applyMove("F'");
   assert.equal(createGraphData(cube, 'cross').stats.solved, 4);
   assert.equal(createGraphData(new CubeState(2), 'cross').nodes.length, 0);
+});
+
+test('piece selection exposes exactly the physical neighbors, including on larger cubes', () => {
+  for (const size of [2, 3, 4, 7]) {
+    const cube = new CubeState(size).applyAlgorithm("R U F2 L'");
+    const graph = createGraphData(cube, 'pieces');
+    const original = structuredClone(graph);
+    const signature = cube.signature();
+    // Cover all physical kinds without relying on any particular node layout.
+    const samples = [1, 2, 3].map(stickers => cube.cubies.find(p => p.stickers.length === stickers)).filter(Boolean);
+    for (const piece of samples) {
+      const expected = new Set(cube.cubies.filter(p => p.position.reduce((d, value, axis) => d + Math.abs(value - piece.position[axis]), 0) === 1).map(p => p.id));
+      const focus = graphFocus(graph, { selectedPiece: piece.id });
+      assert.deepEqual(focus.selected, new Set([piece.id]));
+      assert.deepEqual(focus.neighbors, expected);
+      assert.deepEqual(focus.emphasized, new Set([piece.id, ...expected]));
+      assert.equal(focus.active, true);
+    }
+    assert.deepEqual(graph, original, 'selection must not alter cached graph data');
+    assert.equal(cube.signature(), signature, 'selection must not turn the cube');
+  }
+});
+
+test('cross targets and tracked edges share one exact physical selection', () => {
+  const cube = new CubeState().applyAlgorithm("F R U'");
+  const graph = createGraphData(cube, 'cross');
+  const center = cube.cubies.find(p => p.stickers.length === 1 && p.stickers[0].color === 'D');
+  const centerNode = graph.nodes.find(n => n.id === center.id);
+  assert.deepEqual(centerNode.progress, { value: graph.stats.solved, total: 4 });
+  assert.equal(centerNode.displayLabel, `${graph.stats.solved}/4`);
+  for (const piece of cube.cubies.filter(p => p.stickers.length === 2 && p.stickers.some(s => s.color === 'D'))) {
+    const focus = graphFocus(graph, { selectedPiece: piece.id });
+    assert.deepEqual(focus.selected, new Set([piece.id, `target-${piece.id}`]));
+    assert.deepEqual(focus.neighbors, new Set([center.id]));
+    const tracked = graph.nodes.find(n => n.id === piece.id);
+    const target = graph.nodes.find(n => n.id === `target-${piece.id}`);
+    assert.equal(target.pieceId, tracked.pieceId);
+    assert.equal(target.label, tracked.label, 'identity must remain stable when a tracked edge moves to another slot');
+    assert.equal(target.solved, tracked.solved);
+    const arrow = graph.edges.find(e => e.source === tracked.id && e.target === target.id);
+    assert.equal(arrow.directed, true);
+    assert.equal(arrow.dashed, !tracked.solved);
+  }
+});
+
+test('next-turn highlighting remains independent from a pinned piece and includes fixed face centers', () => {
+  const cube = new CubeState().applyAlgorithm("R U F2 D'");
+  const graph = createGraphData(cube, 'pieces');
+  const affected = new Set(cube.cubies.filter(p => p.position[0] === 1).map(p => p.id));
+  const selected = cube.cubies.find(p => p.position[0] === -1 && p.stickers.length === 2).id;
+  const focus = graphFocus(graph, { selectedPiece: selected, highlightedPieces: affected });
+  assert.equal(affected.size, 9);
+  assert.deepEqual(focus.selected, new Set([selected]));
+  assert.deepEqual(focus.highlighted, affected);
+  assert.equal(focus.highlighted.has(selected), false);
+  const rightCenter = cube.cubies.find(p => p.position[0] === 1 && p.stickers.length === 1);
+  assert.ok(focus.highlighted.has(rightCenter.id));
+  assert.deepEqual(graphFocus(graph, { selectedPiece: selected, highlightedPieces: [...affected] }), focus);
+  assert.ok([...focus.selected, ...focus.neighbors, ...affected].every(id => focus.emphasized.has(id)));
+
+  const cross = createGraphData(cube, 'cross');
+  const crossFocus = graphFocus(cross, { highlightedPieces: affected });
+  assert.deepEqual(crossFocus.highlighted, new Set(cross.nodes.filter(n => affected.has(n.pieceId)).map(n => n.id)));
+});
+
+test('selecting a permutation keeps its complete directed cycle visible', () => {
+  const cube = new CubeState().applyMove('R');
+  const graph = createGraphData(cube, 'cycles');
+  assert.equal(graph.cycles.length, 2);
+  for (const cycle of graph.cycles) {
+    assert.equal(cycle.length, 4);
+    const selected = cycle[0];
+    const focus = graphFocus(graph, { selectedPiece: selected });
+    assert.deepEqual(focus.cycle, new Set(cycle));
+    assert.deepEqual(focus.emphasized, new Set(cycle));
+    assert.equal(focus.neighbors.size, 2);
+    for (let i = 0; i < cycle.length; i++) {
+      assert.ok(graph.edges.some(edge => edge.source === cycle[i] && edge.target === cycle[(i + 1) % cycle.length] && edge.directed));
+    }
+    assert.ok(graph.nodes.filter(n => !focus.emphasized.has(n.id)).every(n => !cycle.includes(n.id)));
+  }
+});
+
+test('stale piece IDs and whole-state diagrams never create a false piece focus', () => {
+  const cube = new CubeState().applyMove('F');
+  for (const mode of ['pieces', 'cross', 'cycles', 'states']) {
+    const focus = graphFocus(createGraphData(cube, mode), { selectedPiece: 'missing-piece', highlightedPieces: ['missing-piece'] });
+    assert.equal(focus.active, false);
+    assert.equal(focus.emphasized.size, 0);
+  }
+  const states = createGraphData(cube, 'states');
+  assert.equal(graphFocus(states, { selectedPiece: cube.cubies[0].id, highlightedPieces: cube.cubies.map(p => p.id) }).active, false);
+  assert.equal(graphFocus(createGraphData(cube), { highlightedPieces: 'not-an-id-list' }).active, false);
 });
 
 test('3×3 diagrams retain a solved state through every whole-cube rotation', () => {

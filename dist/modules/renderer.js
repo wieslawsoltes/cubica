@@ -11,7 +11,12 @@ const PALETTE = {
   U: '#f2eee5', R: '#ed655c', F: '#34b6a3',
   D: '#edc84d', L: '#f6a34c', B: '#5c8fe9',
 };
-const BODY = '#26312f';
+const DARK_PALETTE = {
+  U: '#f4f7fc', R: '#f46b64', F: '#2dcca4',
+  D: '#f3d363', L: '#ffa755', B: '#6aa5ff',
+};
+const SELECTION = '#62dbf4';
+const AFFECTED = '#c2ee81';
 const TAU = Math.PI * 2;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -22,8 +27,13 @@ const normalize = (v) => {
   return [v[0] / d, v[1] / d, v[2] / d];
 };
 const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
-const COLORS = Object.fromEntries(Object.entries(PALETTE).map(([k, v]) => [k, rgb(v)]));
-const BODY_RGB = rgb(BODY);
+const colorMap = palette => Object.fromEntries(Object.entries(palette).map(([key, value]) => [key, rgb(value)]));
+const THEMES = {
+  light: { colors: colorMap(PALETTE), body: '#26312f', bodyRGB: rgb('#26312f'), shadow: [24, 48, 39] },
+  dark: { colors: colorMap(DARK_PALETTE), body: '#1b2633', bodyRGB: rgb('#1b2633'), shadow: [3, 8, 15] },
+};
+const SELECTION_RGB = rgb(SELECTION), AFFECTED_RGB = rgb(AFFECTED);
+const mixColor = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 const IDENTITY_BASIS = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
 
 function rotate(v, axis, angle) {
@@ -169,6 +179,7 @@ struct VertexOutput {
   @location(1) normal: vec3<f32>,
   @location(2) color: vec4<f32>,
   @location(3) material: vec4<f32>,
+  @location(4) local: vec3<f32>,
 };
 @vertex fn vs(input: VertexInput) -> VertexOutput {
   let model = mat4x4<f32>(input.m0, input.m1, input.m2, input.m3);
@@ -179,6 +190,7 @@ struct VertexOutput {
   out.normal = normalize((model * vec4<f32>(input.normal, 0.0)).xyz);
   out.color = input.color;
   out.material = input.material;
+  out.local = input.position;
   return out;
 }
 @fragment fn fs(input: VertexOutput) -> @location(0) vec4<f32> {
@@ -187,15 +199,30 @@ struct VertexOutput {
   let l = normalize(vec3<f32>(-0.5, 1.6, 1.9));
   let fill = normalize(vec3<f32>(2.5, 0.8, -0.2));
   let h = normalize(l + v);
-  let diffuse = 0.48 + 0.37 * max(dot(n, l), 0.0) + 0.19 * max(dot(n, fill), 0.0);
+  let diffuse = mix(0.48, 0.54, camera.settings.z)
+    + 0.37 * max(dot(n, l), 0.0) + 0.19 * max(dot(n, fill), 0.0);
   let hemisphere = 0.93 + 0.07 * n.y;
   let base = pow(input.color.rgb, vec3<f32>(2.2));
   let specular = pow(max(dot(n, h), 0.0), mix(65.0, 48.0, input.material.x));
   let edge = pow(1.0 - max(dot(n, v), 0.0), 4.0);
   let shine = specular * mix(0.052, 0.035, input.material.x)
     + edge * 0.011 * (1.0 - input.material.x);
-  var linear = base * diffuse * hemisphere + vec3<f32>(1.0, 0.985, 0.95) * shine;
-  linear += vec3<f32>(0.025, 0.13, 0.10) * input.material.y * (1.0 - input.material.x);
+  let lighting = mix(vec3<f32>(1.0, 0.985, 0.95), vec3<f32>(0.92, 0.97, 1.0), camera.settings.z);
+  var linear = (base * diffuse * hemisphere + lighting * shine) * input.material.w;
+  let selected = input.material.y;
+  let affected = input.material.z;
+  // A rounded-square rim marks a piece without changing its sticker identity.
+  // Local coordinates follow the animated instance, so the rim cannot detach
+  // from the selected cubie during a turn, orbit, or exploded view.
+  let q = abs(input.local.xy) - vec2<f32>(0.379);
+  let distanceToEdge = length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - 0.067;
+  let rim = smoothstep(-0.035, -0.012, distanceToEdge)
+    * max(selected, affected * 0.72) * input.material.x;
+  let accent = mix(vec3<f32>(0.761, 0.933, 0.506), vec3<f32>(0.384, 0.859, 0.957),
+    min(selected * 4.0, 1.0));
+  linear = mix(linear, pow(accent, vec3<f32>(2.2)), rim);
+  linear += pow(accent, vec3<f32>(2.2)) * max(selected * 0.075, affected * 0.025)
+    * (1.0 - input.material.x);
   let srgb = pow(clamp(linear, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(1.0 / 2.2));
   return vec4<f32>(srgb * input.color.a, input.color.a);
 }`;
@@ -217,8 +244,10 @@ struct Out { @builtin(position) clip: vec4<f32>, @location(0) world: vec3<f32> }
 @fragment fn fs(input: Out) -> @location(0) vec4<f32> {
   let p = (input.world.xz - vec2<f32>(0.15, -0.1)) / (1.0 + camera.settings.x * 0.3);
   let r = dot(p, p);
-  let alpha = (exp(-r * 0.52) * 0.105 + exp(-r * 1.8) * 0.11) * (1.0 - camera.settings.y * 0.65);
-  return vec4<f32>(vec3<f32>(0.13, 0.20, 0.18) * alpha, alpha);
+  let alpha = (exp(-r * 0.52) * 0.105 + exp(-r * 1.8) * 0.11)
+    * (1.0 - camera.settings.y * 0.65) * mix(1.0, 1.7, camera.settings.z);
+  let color = mix(vec3<f32>(0.13, 0.20, 0.18), vec3<f32>(0.012, 0.031, 0.059), camera.settings.z);
+  return vec4<f32>(color * alpha, alpha);
 }`;
 
 function insidePolygon(x, y, points) {
@@ -248,8 +277,9 @@ function convexHull(points) {
 
 /** Native WebGPU cube view, with a state-equivalent Canvas 3D fallback. */
 export class CubeRenderer {
-  constructor(canvas, { onBackend = () => {}, onPick = () => {}, onTurn = () => {} } = {}) {
+  constructor(canvas, { onBackend = () => {}, onPick = () => {}, onTurn = () => {}, theme = 'light' } = {}) {
     if (!canvas) throw new TypeError('CubeRenderer needs a canvas.');
+    if (!Object.hasOwn(THEMES, theme)) throw new RangeError('Choose the light or dark cube theme.');
     this.canvas = canvas;
     this.onBackend = onBackend;
     this.onPick = onPick;
@@ -258,6 +288,11 @@ export class CubeRenderer {
     this.cube = null;
     this.highlight = null;
     this.hover = null;
+    this.affectedPieces = new Set();
+    this.dimUnrelatedPieces = false;
+    this.theme = theme;
+    this._appearance = THEMES[theme];
+    if (canvas.dataset) canvas.dataset.rendererTheme = theme;
     this.xray = false;
     this.explode = 0;
     this.targetExplode = 0;
@@ -482,7 +517,60 @@ export class CubeRenderer {
   }
 
   setXray(value) { this.xray = Boolean(value); this._request(); }
-  setHighlight(pieceId) { this.highlight = pieceId ?? null; this._request(); }
+  setHighlight(pieceId) {
+    const next = pieceId ?? null;
+    if (this.highlight === next) return;
+    this.highlight = next;
+    this._request();
+  }
+
+  /**
+   * Change lighting and contrast without rebuilding meshes or pipelines.
+   * Both backends remain transparent so the host controls the stage background.
+   */
+  setTheme(theme) {
+    if (!Object.hasOwn(THEMES, theme)) throw new RangeError('Choose the light or dark cube theme.');
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this._appearance = THEMES[theme];
+    if (this.canvas.dataset) this.canvas.dataset.rendererTheme = theme;
+    this._request();
+  }
+
+  /**
+   * Mark a move's affected pieces in lime; an explicit selection remains cyan.
+   * Pass null or an empty iterable to clear. Dimming never hides sticker colors
+   * or changes picking. Reapplying the same focus does not schedule a frame.
+   */
+  setAffectedPieces(pieceIds, { dimOthers = false } = {}) {
+    const next = new Set(typeof pieceIds === 'string' ? [pieceIds] : pieceIds ?? []);
+    const dim = Boolean(dimOthers) && next.size > 0;
+    if (dim === this.dimUnrelatedPieces && next.size === this.affectedPieces.size
+      && [...next].every(id => this.affectedPieces.has(id))) return;
+    this.affectedPieces = next;
+    this.dimUnrelatedPieces = dim;
+    this._request();
+  }
+
+  /** Orbit to a cubie's current visible surfaces, keeping zoom and cube state. */
+  focusPiece(pieceId) {
+    const piece = this.cube?.cubies.find(cubie => cubie.id === pieceId);
+    if (!piece?.stickers?.length) return false;
+    const outward = normalize(piece.stickers.reduce((sum, sticker) =>
+      sum.map((value, axis) => value + sticker.normal[axis]), [0, 0, 0]));
+    // At a pole, retain yaw and slightly incline the view to keep orbit stable.
+    if (Math.hypot(outward[0], outward[2]) > 0.001) {
+      const yaw = Math.atan2(outward[0], outward[2]);
+      this.targetYaw = this.yaw + Math.atan2(Math.sin(yaw - this.yaw), Math.cos(yaw - this.yaw));
+    }
+    this.targetPitch = clamp(Math.atan2(outward[1], Math.hypot(outward[0], outward[2])), -1.25, 1.25);
+    if (globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      this.yaw = this.targetYaw;
+      this.pitch = this.targetPitch;
+    }
+    this._request();
+    return true;
+  }
 
   _request() {
     if (!this._frame && !this._disposed) this._frame = requestAnimationFrame((time) => this._render(time));
@@ -547,16 +635,20 @@ export class CubeRenderer {
       const worldCenter = center.map((v) => v * scale);
       const baseBasis = IDENTITY_BASIS.map((v) => rotate(v, axis, angle));
       const selected = this.highlight === cubie.id ? 1 : this.hover === cubie.id ? 0.35 : 0;
-      const bodyColor = selected ? [0.15 + selected * 0.035, 0.20 + selected * 0.06, 0.19 + selected * 0.045] : BODY_RGB;
+      const affected = this.affectedPieces.has(cubie.id) ? 1 : 0;
+      const focusGain = this.dimUnrelatedPieces && !affected && !selected ? 0.42 : 1;
+      const bodyColor = mixColor(this._appearance.bodyRGB, selected ? SELECTION_RGB : AFFECTED_RGB,
+        selected ? selected * 0.34 : affected * 0.14);
       bodies.push({ data: [...matrix(baseBasis, center, scale), ...bodyColor,
-        this.xray ? 0.09 : 1, 0, selected, 0, 0], center: worldCenter });
-      const item = { cubie, center, scale, basis: baseBasis, selected, stickers: [], worldCenter };
+        this.xray ? 0.09 : 1, 0, selected, affected, focusGain], center: worldCenter });
+      const item = { cubie, center, scale, basis: baseBasis, selected, affected, focusGain,
+        bodyColor, stickers: [], worldCenter };
       for (const sticker of cubie.stickers) {
         const basis = basisForNormal(sticker.normal).map((v) => rotate(v, axis, angle));
-        const color = COLORS[sticker.color] || COLORS.U;
+        const color = this._appearance.colors[sticker.color] || this._appearance.colors.U;
         const stickerCenter = center.map((v, i) => (v + basis[2][i] * 0.503) * scale);
         stickers.push({ data: [...matrix(basis, center, scale), ...color,
-          this.xray ? 0.64 : 1, 1, selected, 0, 0], center: stickerCenter });
+          this.xray ? 0.64 : 1, 1, selected, affected, focusGain], center: stickerCenter });
         item.stickers.push({ sticker, basis, color });
         if (dot(basis[2], sub(this.eye, stickerCenter)) > 0) {
           const quad = [[-0.46, -0.46, 0.507], [0.46, -0.46, 0.507],
@@ -596,7 +688,7 @@ export class CubeRenderer {
     const camera = new Float32Array(24);
     camera.set(this.viewProjection);
     camera.set([...this.eye, 1], 16);
-    camera.set([this.explode, this.xray ? 1 : 0, 0, 0], 20);
+    camera.set([this.explode, this.xray ? 1 : 0, this.theme === 'dark' ? 1 : 0, 0], 20);
     this.device.queue.writeBuffer(this.cameraBuffer, 0, camera);
     const bodyBuffer = this._uploadInstances('bodyInstance', this.bodyInstances);
     const stickerBuffer = this._uploadInstances('stickerInstance', this.stickerInstances);
@@ -636,8 +728,9 @@ export class CubeRenderer {
     ctx.translate(shadow[0], shadow[1]);
     ctx.scale(1, 0.32);
     const gradient = ctx.createRadialGradient(0, 0, shadowR * 0.12, 0, 0, shadowR);
-    gradient.addColorStop(0, `rgba(24,48,39,${this.xray ? 0.075 : 0.22})`);
-    gradient.addColorStop(1, 'rgba(24,48,39,0)');
+    const shadowColor = this._appearance.shadow.join(',');
+    gradient.addColorStop(0, `rgba(${shadowColor},${(this.xray ? 0.075 : 0.22) * (this.theme === 'dark' ? 1.7 : 1)})`);
+    gradient.addColorStop(1, `rgba(${shadowColor},0)`);
     ctx.fillStyle = gradient;
     ctx.fillRect(-shadowR, -shadowR, shadowR * 2, shadowR * 2);
     ctx.restore();
@@ -652,7 +745,8 @@ export class CubeRenderer {
     };
     const light = normalize([-0.5, 1.6, 1.9]), fill = normalize([2.5, 0.8, -0.2]);
     const shade = (color, n, gain = 1) => {
-      const amount = (0.76 + 0.16 * Math.max(0, dot(n, light)) + 0.11 * Math.max(0, dot(n, fill))) * gain;
+      const ambient = this.theme === 'dark' ? 0.81 : 0.76;
+      const amount = (ambient + 0.16 * Math.max(0, dot(n, light)) + 0.11 * Math.max(0, dot(n, fill))) * gain;
       return `rgb(${color.map((v) => Math.round(clamp(v * amount, 0, 1) * 255)).join(',')})`;
     };
     const bodyNormals = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
@@ -666,14 +760,15 @@ export class CubeRenderer {
         corners.push(projectLocal(item, [x, y, z]));
       }
       path(convexHull(corners));
-      ctx.fillStyle = item.selected ? '#356a59' : BODY;
+      const focusGain = Math.pow(item.focusGain, 1 / 2.2);
+      ctx.fillStyle = shade(item.bodyColor, [0, 0, 0], focusGain);
       ctx.fill();
       for (const n of bodyNormals) {
         const normal = transform(item.basis, n);
         if (dot(normal, sub(this.eye, item.worldCenter)) <= 0) continue;
         const basis = basisForNormal(n).map((v) => transform(item.basis, v));
         path(roundedPerimeter(0.483, 0.042, 4, 0.484).map((p) => projectLocal(item, p, basis)));
-        ctx.fillStyle = item.selected ? shade([0.21, 0.39, 0.32], normal) : shade(BODY_RGB, normal);
+        ctx.fillStyle = shade(item.bodyColor, normal, focusGain);
         ctx.fill();
       }
       ctx.globalAlpha = this.xray ? 0.65 : 1;
@@ -682,18 +777,19 @@ export class CubeRenderer {
         if (dot(n, sub(this.eye, item.worldCenter)) <= 0) continue;
         const outer = roundedPerimeter(0.455, 0.075, 6, 0.494).map((p) => projectLocal(item, p, face.basis));
         path(outer);
-        ctx.fillStyle = shade(face.color, n, 0.78);
+        ctx.fillStyle = shade(face.color, n, 0.78 * focusGain);
         ctx.fill();
         const points = roundedPerimeter(0.446, 0.067, 6, 0.504).map((p) => projectLocal(item, p, face.basis));
         const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
         const fillGradient = ctx.createLinearGradient(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
-        fillGradient.addColorStop(0, shade(face.color, n, 1.055));
-        fillGradient.addColorStop(1, shade(face.color, n, 0.97));
+        fillGradient.addColorStop(0, shade(face.color, n, 1.055 * focusGain));
+        fillGradient.addColorStop(1, shade(face.color, n, 0.97 * focusGain));
         path(points);
         ctx.fillStyle = fillGradient;
         ctx.fill();
-        ctx.strokeStyle = item.selected ? 'rgba(240,255,246,.7)' : 'rgba(255,255,255,.18)';
-        ctx.lineWidth = item.selected ? 1.4 : 0.65;
+        ctx.strokeStyle = item.selected ? `rgba(98,219,244,${Math.max(0.45, item.selected)})`
+          : item.affected ? AFFECTED : 'rgba(255,255,255,.14)';
+        ctx.lineWidth = item.selected ? 1 + item.selected * 1.2 : item.affected ? 1.4 : 0.55;
         ctx.stroke();
       }
     }
